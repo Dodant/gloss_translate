@@ -15,7 +15,7 @@ U_TKN, S_TKN = '<usr>', '<sys>'
 BOS, EOS = '</s>', '</s>'
 MASK, SENT, UNK, PAD = '<mask>', '<sent>', '<unk>', '<pad>'
 
-TOKENIZER = PreTrainedTokenizerFast.from_pretrained("skt/kogpt2-base-v2",
+TOKENIZER = PreTrainedTokenizerFast.from_pretrained("skt/ko-gpt-trinity-1.2B-v0.5",
                                                     bos_token=BOS, eos_token=EOS, unk_token=UNK,
                                                     pad_token=PAD, mask_token=MASK)
 
@@ -90,7 +90,7 @@ class KoGPT2Chat(LightningModule):
         self.train_set = None
         self.save_hyperparameters(hparams)
         self.neg = -1e18
-        self.kogpt2 = GPT2LMHeadModel.from_pretrained('skt/kogpt2-base-v2')
+        self.kogpt2 = GPT2LMHeadModel.from_pretrained('skt/ko-gpt-trinity-1.2B-v0.5')
         self.loss_function = torch.nn.CrossEntropyLoss(reduction='none')
 
     @staticmethod
@@ -98,7 +98,7 @@ class KoGPT2Chat(LightningModule):
         # add model specific args
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--max-len', type=int, default=32, help='max sentence length on input')
-        parser.add_argument('--batch-size', type=int, default=32, help='batch size for training')
+        parser.add_argument('--batch-size', type=int, default=12, help='batch size for training')
         parser.add_argument('--lr', type=float, default=5e-5, help='The initial learning rate')
         parser.add_argument('--warmup_ratio', type=float, default=0.1, help='warmup ratio')
         return parser
