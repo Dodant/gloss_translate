@@ -12,7 +12,7 @@ from transformers.optimization import AdamW, get_cosine_schedule_with_warmup
 from transformers import PreTrainedTokenizerFast, GPT2LMHeadModel
 
 U_TKN, S_TKN = '<usr>', '<sys>'
-BOS, EOS = '</s>', '</s>'
+BOS, EOS = '<s>', '</s>'
 MASK, SENT, UNK, PAD = '<mask>', '<sent>', '<unk>', '<pad>'
 
 TOKENIZER = PreTrainedTokenizerFast.from_pretrained("skt/ko-gpt-trinity-1.2B-v0.5",
@@ -146,7 +146,7 @@ class KoGPT2Chat(LightningModule):
         data = pd.read_csv('MY_DATA/mydata_edited.csv')
         self.train_set = CharDataset(data, max_len=self.hparams.max_len)
         return DataLoader(self.train_set, batch_size=self.hparams.batch_size, num_workers=8,
-                          shuffle=True, collate_fn=self._collate_fn)
+                          shuffle=True, collate_fn=self._collate_fn, drop_last=True)
 
     def chat(self, sent='0'):
 
@@ -166,8 +166,8 @@ class KoGPT2Chat(LightningModule):
                         break
 
                     a += gen.replace('▁', ' ')
-                    print(f"translation > {a.strip()}")
-
+                    print(f"processing ... {a.strip()}")
+                print(f'translation > {a}')
 
 def configure_parser():
     parser = argparse.ArgumentParser(description='Gloss Translator based on KoGPT-2')
