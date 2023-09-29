@@ -1,5 +1,6 @@
 import argparse
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -15,12 +16,15 @@ U_TKN, S_TKN = '<usr>', '<sys>'
 BOS, EOS = '</s>', '</s>'
 MASK, SENT, UNK, PAD = '<mask>', '<sent>', '<unk>', '<pad>'
 
-TOKENIZER = PreTrainedTokenizerFast.from_pretrained("skt/kogpt2-base-v2",
-                                                    bos_token=BOS, eos_token=EOS, unk_token=UNK,
-                                                    pad_token=PAD, mask_token=MASK)
+warnings.filterwarnings(action='ignore')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+MODEL_ = 'skt/kogpt2-base-v2'
+TOKENIZER = PreTrainedTokenizerFast.from_pretrained(MODEL_,
+                                                    bos_token=BOS, eos_token=EOS, unk_token=UNK,
+                                                    pad_token=PAD, mask_token=MASK)
 
 
 class CharDataset(Dataset):
@@ -90,7 +94,7 @@ class KoGPT2Chat(LightningModule):
         self.train_set = None
         self.save_hyperparameters(hparams)
         self.neg = -1e18
-        self.kogpt2 = GPT2LMHeadModel.from_pretrained('skt/kogpt2-base-v2')
+        self.kogpt2 = GPT2LMHeadModel.from_pretrained(MODEL_)
         self.loss_function = torch.nn.CrossEntropyLoss(reduction='none')
 
     @staticmethod
@@ -98,9 +102,10 @@ class KoGPT2Chat(LightningModule):
         # add model specific args
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--max-len', type=int, default=32, help='max sentence length on input')
-        parser.add_argument('--batch-size', type=int, default=32, help='batch size for training')
+        parser.add_argument('--batch-size', type=int, default=64, help='batch size for training')
         parser.add_argument('--lr', type=float, default=5e-5, help='The initial learning rate')
         parser.add_argument('--warmup_ratio', type=float, default=0.1, help='warmup ratio')
+        parser.add_argument('--tag', type=str, default='0', help='tag for model checkpoint')
         return parser
 
     def forward(self, inputs):
@@ -143,10 +148,13 @@ class KoGPT2Chat(LightningModule):
         return torch.from_numpy(data), torch.from_numpy(mask), torch.from_numpy(label)
 
     def train_dataloader(self):
-        data = pd.read_csv('MY_DATA/mydata_edited.csv')
+        data1 = pd.read_csv('MY_DATA/mydata(edited).csv')
+        data2 = pd.read_csv('MY_DATA/gloss_from_book.csv')
+        data3 = pd.read_csv('GKSL/GKSL3k(labeled).csv')
+        data = pd.concat([data1, data2, data3], ignore_index=True)
         self.train_set = CharDataset(data, max_len=self.hparams.max_len)
         return DataLoader(self.train_set, batch_size=self.hparams.batch_size, num_workers=8,
-                          shuffle=True, collate_fn=self._collate_fn)
+                          shuffle=True, collate_fn=self._collate_fn, drop_last=True)
 
     def chat(self, sent='0'):
 
@@ -157,16 +165,18 @@ class KoGPT2Chat(LightningModule):
                     break
                 a = ''
                 while True:
-                    encoded_input = TOKENIZER.encode(U_TKN + q + SENT + sent + S_TKN + a)
-                    input_ids = torch.LongTensor(encoded_input).unsqueeze(dim=0)
-                    pred_token = torch.argmax(self(input_ids), dim=-1).item()
-                    gen = TOKENIZER.convert_ids_to_tokens(pred_token)
+                    input_ids = torch.LongTensor(TOKENIZER.encode(U_TKN + q + SENT + sent + S_TKN + a)).unsqueeze(
+                        dim=0)
+                    pred = self(input_ids)
+                    gen = TOKENIZER.convert_ids_to_tokens(
+                        torch.argmax(pred, dim=-1).squeeze().numpy().tolist())[-1]
 
                     if gen == EOS:
                         break
 
                     a += gen.replace('▁', ' ')
-                    print(f"translation > {a.strip()}")
+                    print(f"processing ... {a.strip()}")
+                print(f'translation > {a}')
 
 
 def configure_parser():
@@ -185,7 +195,7 @@ def configure_parser():
 def train_model(args):
     checkpoint_callback = ModelCheckpoint(
         dirpath='model_chp',
-        filename='{epoch:02d}-{train_loss:.2f}',
+        filename='{epoch:02d}-{train_loss:.2f}' + '-' + f'{args.tag}',
         verbose=True,
         save_last=True,
         monitor='train_loss',
@@ -211,26 +221,3 @@ if __name__ == "__main__":
 
     if args.train: train_model(args)
     if args.chat: chat_model(args.model_params)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
