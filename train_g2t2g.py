@@ -21,31 +21,33 @@ warnings.filterwarnings(action='ignore')
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-MODEL_ = 'skt/kogpt2-base-v2'
-TOKENIZER = PreTrainedTokenizerFast.from_pretrained(MODEL_,
-                                                    bos_token=BOS, eos_token=EOS, unk_token=UNK,
-                                                    pad_token=PAD, mask_token=MASK)
-
 
 class CharDataset(Dataset):
     def __init__(self, chats, max_len=32):
         self._data = chats
         self.first_log = True
         self.max_len = max_len
+        self.TKNZR = PreTrainedTokenizerFast.from_pretrained(args.model,
+                                                             bos_token=BOS, eos_token=EOS, unk_token=UNK,
+                                                             pad_token=PAD, mask_token=MASK)
 
     def __len__(self):
         return len(self._data)
 
     def _tokenize_question(self, question, sentiment):
-        return TOKENIZER.tokenize(U_TKN + question + SENT + sentiment)
+        return self.TKNZR.tokenize(U_TKN + question + SENT + sentiment)
 
     def _tokenize_answer(self, answer):
-        return TOKENIZER.tokenize(S_TKN + answer + EOS)
+        return self.TKNZR.tokenize(S_TKN + answer + EOS)
 
     def __getitem__(self, idx):
         turn = self._data.iloc[idx]
-        q_toked = self._tokenize_question(turn['gloss'], str(turn['label']))
-        a_toked = self._tokenize_answer(turn['spoken'])
+        if args.direction == 'g2t':
+            q_toked = self._tokenize_question(turn['gloss'], str(turn['label']))
+            a_toked = self._tokenize_answer(turn['spoken'])
+        else:
+            q_toked = self._tokenize_question(turn['spoken'], str(turn['label']))
+            a_toked = self._tokenize_answer(turn['gloss'])
 
         # Adjust token lengths if combined length exceeds max_len
         if len(q_toked) + len(a_toked) > self.max_len:
@@ -56,8 +58,8 @@ class CharDataset(Dataset):
         mask = [0] * len(q_toked) + [1] * len(a_toked) + [0] * (self.max_len - len(q_toked) - len(a_toked))
 
         # Convert tokens to ids and pad to max length
-        labels_ids = self._pad_to_max(TOKENIZER.convert_tokens_to_ids(labels))
-        token_ids = self._pad_to_max(TOKENIZER.convert_tokens_to_ids(q_toked + a_toked))
+        labels_ids = self._pad_to_max(self.TKNZR.convert_tokens_to_ids(labels))
+        token_ids = self._pad_to_max(self.TKNZR.convert_tokens_to_ids(q_toked + a_toked))
 
         # Log the first sample for debugging purposes
         # if self.first_log:
@@ -78,7 +80,7 @@ class CharDataset(Dataset):
     def _pad_to_max(self, token_ids):
         """Pad the token_ids to max length."""
         while len(token_ids) < self.max_len:
-            token_ids.append(TOKENIZER.pad_token_id)
+            token_ids.append(self.TKNZR.pad_token_id)
         return token_ids
 
     # def _log_sample(self, q_toked, a_toked, labels):
@@ -94,8 +96,11 @@ class KoGPT2Chat(LightningModule):
         self.train_set = None
         self.save_hyperparameters(hparams)
         self.neg = -1e18
-        self.kogpt2 = GPT2LMHeadModel.from_pretrained(MODEL_)
+        self.kogpt2 = GPT2LMHeadModel.from_pretrained(args.model)
         self.loss_function = torch.nn.CrossEntropyLoss(reduction='none')
+        self.TKNZR = PreTrainedTokenizerFast.from_pretrained(args.model,
+                                                            bos_token=BOS, eos_token=EOS, unk_token=UNK,
+                                                            pad_token=PAD, mask_token=MASK)
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -149,8 +154,9 @@ class KoGPT2Chat(LightningModule):
 
     def train_dataloader(self):
         data1 = pd.read_csv('MY_DATA/mydata(edited).csv')
-        data2 = pd.read_csv('MY_DATA/gloss_from_book.csv')
-        data3 = pd.read_csv('GKSL/GKSL3k(labeled).csv')
+        # data2 = pd.read_csv('MY_DATA/gloss_from_book.csv')
+        data2 = pd.read_csv('GKSL/GKSL3k(final)_.csv')
+        data3 = pd.read_csv('GKSL/GKSL13k(final)_.csv')
         data = pd.concat([data1, data2, data3], ignore_index=True)
         self.train_set = CharDataset(data, max_len=self.hparams.max_len)
         return DataLoader(self.train_set, batch_size=self.hparams.batch_size, num_workers=8,
@@ -159,34 +165,31 @@ class KoGPT2Chat(LightningModule):
     def chat(self, sent='0'):
 
         with torch.no_grad():
+            if args.direction == 'g2t': q_str, a_str = 'gloss > ', 'spoken > '
+            else: q_str, a_str = 'spoken > ', 'gloss > '
+
             while True:
-                q = input('gloss > ').strip()
-                if q == 'quit':
-                    break
+                q = input(q_str).strip()
+                if q == 'quit': break
                 a = ''
                 while True:
-                    input_ids = torch.LongTensor(TOKENIZER.encode(U_TKN + q + SENT + sent + S_TKN + a)).unsqueeze(
-                        dim=0)
+                    input_ids = torch.LongTensor(self.TKNZR.encode(U_TKN + q + SENT + sent + S_TKN + a)).unsqueeze(dim=0)
                     pred = self(input_ids)
-                    gen = TOKENIZER.convert_ids_to_tokens(
-                        torch.argmax(pred, dim=-1).squeeze().numpy().tolist())[-1]
-
-                    if gen == EOS:
-                        break
-
+                    gen = self.TKNZR.convert_ids_to_tokens(torch.argmax(pred, dim=-1).squeeze().numpy().tolist())[-1]
+                    if gen == EOS: break
                     a += gen.replace('▁', ' ')
                     print(f"processing ... {a.strip()}")
-                print(f'translation > {a}')
+                print(f'{a_str}{a}')
 
 
 def configure_parser():
     parser = argparse.ArgumentParser(description='Gloss Translator based on KoGPT-2')
     parser.add_argument('--chat', action='store_true', default=False, help='translation on given user input')
-    parser.add_argument('--sentence', type=str, default='0',
-                        help='0 is declarative, 1 is interrogative, 2 is exclamatory')
-    parser.add_argument('--model_params', type=str, default='model_chp/model_last.ckpt',
-                        help='model binary for translation')
+    parser.add_argument('--sentence', type=str, default='0', help='sentence type')
+    parser.add_argument('--model_params', type=str, default='model_chp/last.ckpt', help='model binary')
     parser.add_argument('--train', action='store_true', default=False, help='training mode')
+    parser.add_argument('--direction', type=str, default='g2t', help='g2t or t2g')
+    parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
     parser = KoGPT2Chat.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
     return parser
@@ -195,7 +198,7 @@ def configure_parser():
 def train_model(args):
     checkpoint_callback = ModelCheckpoint(
         dirpath='model_chp',
-        filename='{epoch:02d}-{train_loss:.2f}' + '-' + f'{args.tag}',
+        filename=f'{args.tag}-{args.direction}=' + '{epoch:02d}-{train_loss:.2f}',
         verbose=True,
         save_last=True,
         monitor='train_loss',
