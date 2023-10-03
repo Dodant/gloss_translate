@@ -102,7 +102,7 @@ class KoGPT2Chat(LightningModule):
         # add model specific args
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--max-len', type=int, default=32, help='max sentence length on input')
-        parser.add_argument('--batch-size', type=int, default=12, help='batch size for training')
+        parser.add_argument('--batch-size', type=int, default=8, help='batch size for training')
         parser.add_argument('--lr', type=float, default=5e-5, help='The initial learning rate')
         parser.add_argument('--warmup_ratio', type=float, default=0.1, help='warmup ratio')
         parser.add_argument('--tag', type=str, default='0', help='tag for model checkpoint')
