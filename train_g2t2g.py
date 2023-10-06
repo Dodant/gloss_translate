@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.core.lightning import LightningModule
 from torch.utils.data import DataLoader, Dataset
 from transformers.optimization import AdamW, get_cosine_schedule_with_warmup
@@ -240,6 +240,7 @@ def configure_parser():
     parser.add_argument('--chat', action='store_true', default=False, help='translation on given user input')
     parser.add_argument('--model_params', type=str, default='model_chp/last.ckpt', help='model binary')
     parser.add_argument('--train', action='store_true', default=False, help='training mode')
+    parser.add_argument('--test', action='store_true', default=False, help='test mode')
     parser.add_argument('--direction', type=str, default='g2t', help='g2t or t2g')
     parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
     parser.add_argument('--train_dataset', type=str, default='MY_DATA/mydata(edited).csv')
@@ -252,18 +253,32 @@ def configure_parser():
 def train_model(args):
     checkpoint_callback = ModelCheckpoint(
         dirpath='model_chp',
-        filename=f'{args.tag}-{args.direction}=' + '{epoch:02d}-{train_loss:.2f}',
+        filename=f'{args.tag}|||' + '{epoch:02d}-{train_loss:.2f}',
         verbose=True,
         save_last=True,
         monitor='train_loss',
         mode='min',
     )
 
+    early_stop_callback = EarlyStopping(
+        monitor='train_loss',
+        min_delta=0.00,
+        patience=5,
+        verbose=True,
+        mode='min'
+    )
+
     model = KoGPT2Chat(args)
-    trainer = Trainer.from_argparse_args(args, callbacks=[checkpoint_callback], gradient_clip_val=1.0)
+    trainer = Trainer.from_argparse_args(args, callbacks=[checkpoint_callback, early_stop_callback], gradient_clip_val=1.0)
     trainer.fit(model)
     trainer.test(model)
     logging.info(f'best model path {checkpoint_callback.best_model_path}')
+
+
+def test_model(model_params):
+    model = KoGPT2Chat.load_from_checkpoint(model_params)
+    trainer = Trainer.from_argparse_args(args)
+    trainer.test(model)
 
 
 def chat_model(model_params):
@@ -276,5 +291,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.info(args)
 
+    if args.test: test_model(args.model_params)
     if args.train: train_model(args)
     if args.chat: chat_model(args.model_params)
