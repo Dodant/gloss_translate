@@ -23,16 +23,6 @@ logger = logging.getLogger("torch.distributed.nn.jit.instantiator")
 logger.setLevel(logging.WARNING)
 
 
-# data1 = pd.read_csv('MY_DATA/mydata(edited).csv')
-# data2 = pd.read_csv('GKSL/GKSL3k(final)_.csv')
-# data3 = pd.read_csv('GKSL/GKSL13k(final)_.csv')
-# data4 = pd.read_csv('MY_DATA/gloss_from_book.csv')
-# train_data = pd.concat([data1, data2, data3], ignore_index=True)
-# train_data = train_data.sample(frac=1).reset_index(drop=True)
-# test_data = data4
-# train_size = int(0.8 * len(df))
-# train_data, val_data = df[:train_size], df[train_size:]
-
 class CharDataset(Dataset):
     def __init__(self, chats, max_len=32):
         self._data = chats
@@ -63,8 +53,7 @@ class CharDataset(Dataset):
 
         # Generate labels and mask
         labels = [MASK] * len(q_toked) + a_toked[1:]
-        mask = [0] * len(q_toked) + [1] * len(a_toked) + [0] * (self.max_len - len(q_toked) - len(a_toked))
-
+        mask = [0] * len(q_toked) + [1] * (self.max_len - len(q_toked))
         # Convert tokens to ids and pad to max length
         labels_ids = self._pad_to_max(self.TKNZR.convert_tokens_to_ids(labels))
         token_ids = self._pad_to_max(self.TKNZR.convert_tokens_to_ids(q_toked + a_toked))
@@ -72,7 +61,6 @@ class CharDataset(Dataset):
         # if self.first_log:
         #     self._log_sample(q_toked, a_toked, labels)
         #     self.first_log = False
-
         return token_ids, np.array(mask), labels_ids
 
     def _adjust_token_length(self, q_toked, a_toked):
@@ -106,6 +94,7 @@ class KoGPT2Chat(LightningModule):
         self.loss_function = torch.nn.CrossEntropyLoss(reduction='none')
         self.TKNZR = GPT2T.from_pretrained(args.model, bos_token=BOS, eos_token=EOS,
                                            unk_token=UNK, pad_token=PAD, mask_token=MASK)
+        self.DS = args.train_dataset
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -162,12 +151,11 @@ class KoGPT2Chat(LightningModule):
         self.log('test_loss', loss_avg)
         return {"test_loss": loss_avg}
 
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
+    def test_epoch_end(self, test_step_outputs):
+        avg_loss = torch.stack([x["test_loss"] for x in test_step_outputs]).mean()
         self.log("avg_test_loss", avg_loss)
 
     def configure_optimizers(self):
-        # Prepare optimizer
         param_optimizer = list(self.named_parameters())
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
@@ -194,20 +182,22 @@ class KoGPT2Chat(LightningModule):
         return torch.from_numpy(data), torch.from_numpy(mask), torch.from_numpy(label)
 
     def train_dataloader(self):
-        data1 = pd.read_csv(args.train_dataset)
+        data1 = pd.read_csv(self.DS)
+        data1 = data1[:int(len(data1) * 0.9)]
         train_set = CharDataset(data1, max_len=self.hparams.max_len)
-        return DataLoader(train_set, batch_size=self.hparams.batch_size, num_workers=10,
+        return DataLoader(train_set, batch_size=self.hparams.batch_size, num_workers=2,
                           shuffle=True, collate_fn=self._collate_fn, drop_last=True)
 
     # def val_dataloader(self):
     #     val_set = CharDataset(val_data, max_len=self.hparams.max_len)
-    #     return DataLoader(val_set, batch_size=self.hparams.batch_size, num_workers=8,
-    #                       shuffle=False, collate_fn=self._collate_fn, drop_last=True)
+    #     return DataLoader(val_set, batch_size=self.hparams.batch_size, num_workers=2,
+    #                       shuffle=False, collate_fn=self._collate_fn)
 
     def test_dataloader(self):
         data4 = pd.read_csv(args.test_dataset)
+        data4 = data4[int(len(data4) * 0.9):]
         test_set = CharDataset(data4, max_len=self.hparams.max_len)
-        return DataLoader(test_set, batch_size=self.hparams.batch_size, num_workers=10, collate_fn=self._collate_fn)
+        return DataLoader(test_set, batch_size=self.hparams.batch_size, num_workers=2, collate_fn=self._collate_fn)
 
     def chat(self):
 
@@ -222,6 +212,10 @@ class KoGPT2Chat(LightningModule):
                     print("UnicodeDecodeError\n")
                     continue
                 if q == 'quit': break
+                input_ids = torch.LongTensor(self.TKNZR.encode(U_TKN + q + S_TKN)).unsqueeze(dim=0)
+                a = self.generate_with_repetition_penalty(input_ids, repetition_penalty=2.0,
+                                                          max_length=self.hparams.max_len + 10)
+                print(f"\r{a_str} {a.replace('▁', ' ').strip()}\n")
                 a = ''
                 while True:
                     input_ids = torch.LongTensor(self.TKNZR.encode(U_TKN + q + S_TKN + a)).unsqueeze(dim=0)
@@ -234,17 +228,20 @@ class KoGPT2Chat(LightningModule):
                     print(f"processing ... {a}")
                 print(f"\r{a_str} {a.replace('▁', ' ').strip()}\n")
 
-
 def configure_parser():
     parser = argparse.ArgumentParser(description='Gloss Translator based on KoGPT-2')
-    parser.add_argument('--chat', action='store_true', default=False, help='translation on given user input')
-    parser.add_argument('--model_params', type=str, default='model_chp/last.ckpt', help='model binary')
-    parser.add_argument('--train', action='store_true', default=False, help='training mode')
-    parser.add_argument('--test', action='store_true', default=False, help='test mode')
-    parser.add_argument('--direction', type=str, default='g2t', help='g2t or t2g')
-    parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
+
     parser.add_argument('--train_dataset', type=str, default='MY_DATA/mydata(edited).csv')
     parser.add_argument('--test_dataset', type=str, default='MY_DATA/gloss_from_book.csv')
+
+    parser.add_argument('--direction', type=str, default='g2t', help='g2t or t2g')
+    parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
+    parser.add_argument('--model_params', type=str, default='model_chp/last.ckpt', help='model binary')
+
+    parser.add_argument('--train', action='store_true', default=False, help='training mode')
+    parser.add_argument('--test', action='store_true', default=False, help='test mode')
+    parser.add_argument('--chat', action='store_true', default=False, help='translation on given user input')
+
     parser = KoGPT2Chat.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
     return parser
@@ -263,7 +260,7 @@ def train_model(args):
     early_stop_callback = EarlyStopping(
         monitor='train_loss',
         min_delta=0.00,
-        patience=5,
+        patience=10,
         verbose=True,
         mode='min'
     )
@@ -291,6 +288,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.info(args)
 
-    if args.test: test_model(args.model_params)
     if args.train: train_model(args)
+    if args.test: test_model(args.model_params)
     if args.chat: chat_model(args.model_params)
