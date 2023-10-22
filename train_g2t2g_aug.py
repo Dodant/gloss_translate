@@ -41,51 +41,75 @@ class CharDataset(Dataset):
     def _tokenize_answer(self, answer):
         return self.TKNZR.tokenize(S_TKN + answer + EOS)
 
-    def __getitem__(self, idx):
+    def _tokenize_mode(self, idx, max_shots):
         turn = self._data.iloc[idx]
+
+        # augmentation mode
         if args.aug:
+            total_q = ''
             if not args.t2g:
-                total_q = ''
-                for i in range(int(args.tag[-2])):
-                    random_fair = random.randint(0, len(self._data) - 1)
-                    q, q_ = self._data.iloc[random_fair]['gloss'], self._data.iloc[random_fair]['spoken']
+                for i in range(max_shots):
+                    rf = random.randint(0, len(self._data) - 1)
+                    q, q_ = self._data.iloc[rf]['gloss'], self._data.iloc[rf]['spoken']
                     total_q += f"{q} > {q_}\n"
                 total_q += f"{turn['gloss']} > "
                 q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['spoken'])
             else:
-                total_q = ''
-                for i in range(int(args.tag[-2])):
-                    random_fair = random.randint(0, len(self._data) - 1)
-                    q, q_ = self._data.iloc[random_fair]['spoken'], self._data.iloc[random_fair]['gloss']
+                for i in range(max_shots):
+                    rf = random.randint(0, len(self._data) - 1)
+                    q, q_ = self._data.iloc[rf]['spoken'], self._data.iloc[rf]['gloss']
                     total_q += f"{q} > {q_}\n"
                 total_q += f"{turn['spoken']} > "
                 q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['gloss'])
+
+        # dynamic augmentation mode
         elif args.dynoaug:
+            total_q = ''
+            shots = random.randint(0, max_shots)
             if not args.t2g:
-                total_q = ''
-                shots = random.randint(0, args.max_shots)
                 for i in range(shots):
-                    random_fair = random.randint(0, len(self._data) - 1)
-                    q, q_ = self._data.iloc[random_fair]['gloss'], self._data.iloc[random_fair]['spoken']
+                    rf = random.randint(0, len(self._data) - 1)
+                    q, q_ = self._data.iloc[rf]['gloss'], self._data.iloc[rf]['spoken']
                     total_q += f"{q} > {q_}\n"
                 total_q += f"{turn['gloss']} > "
                 q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['spoken'])
             else:
-                total_q = ''
-                shots = random.randint(0, args.max_shots)
                 for i in range(shots):
-                    random_fair = random.randint(0, len(self._data) - 1)
-                    q, q_ = self._data.iloc[random_fair]['spoken'], self._data.iloc[random_fair]['gloss']
+                    rf = random.randint(0, len(self._data) - 1)
+                    q, q_ = self._data.iloc[rf]['spoken'], self._data.iloc[rf]['gloss']
                     total_q += f"{q} > {q_}\n"
                 total_q += f"{turn['spoken']} > "
                 q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['gloss'])
-        else:
+
+        elif args.totalaug:
+            total_q = ''
+            shots = random.randint(0, max_shots)
+            for i in range(shots):
+                rf = random.randint(0, len(self._data) - 1)
+                if random.random() > 0.5:
+                    q, q_ = self._data.iloc[rf]['gloss'], self._data.iloc[rf]['spoken']
+                else:
+                    q, q_ = self._data.iloc[rf]['spoken'], self._data.iloc[rf]['gloss']
+                total_q += f"{q} > {q_}\n"
+            if random.random() > 0.5:
+                total_q += f"{turn['gloss']} > "
+                q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['spoken'])
+            else:
+                total_q += f"{turn['spoken']} > "
+                q_toked, a_toked = self._tokenize_question(total_q), self._tokenize_answer(turn['gloss'])
+
+        # normal mode
+        elif args.test or (not args.aug and not args.dynoaug):
             if not args.t2g:
                 q_toked, a_toked = self._tokenize_question(turn['gloss']), self._tokenize_answer(turn['spoken'])
             else:
                 q_toked, a_toked = self._tokenize_question(turn['spoken']), self._tokenize_answer(turn['gloss'])
 
-        # Adjust token lengths if combined length exceeds max_len
+        return q_toked, a_toked
+
+    def __getitem__(self, idx):
+        q_toked, a_toked = self._tokenize_mode(idx, args.max_shots)
+
         if len(q_toked) + len(a_toked) > self.max_len:
             a_toked = self._adjust_token_length(q_toked, a_toked)
 
@@ -194,9 +218,9 @@ class KoGPT2Chat(LightningModule):
         self.log("avg_test_loss", avg_loss)
         with open('ALL_RESULT.txt', 'a') as f:
             if args.bk:
-                f.write(args.tag + '  =bk=  ' + str(avg_loss.item()) + '\n')
+                f.write(args.model_params + '  =bk=  ' + str(avg_loss.item()) + '\n')
             elif args.k3:
-                f.write(args.tag + '  =k3=  ' + str(avg_loss.item()) + '\n')
+                f.write(args.model_params + '  =3k=  ' + str(avg_loss.item()) + '\n')
 
     def configure_optimizers(self):
         param_optimizer = list(self.named_parameters())
@@ -280,9 +304,11 @@ def configure_parser():
     parser.add_argument('--test_dataset', type=str, default='MY_DATA/gloss_from_book.csv')
     parser.add_argument('--k3', action='store_true', default=False)
     parser.add_argument('--bk', action='store_true', default=False)
-    parser.add_argument('--dynoaug', action='store_true', default=False, help='dynamic augmentation mode')
-    parser.add_argument('--max_shots', type=int, default=4, help='max shots for dynamic augmentation')
+
     parser.add_argument('--aug', action='store_true', default=False, help='augmentation mode')
+    parser.add_argument('--dynoaug', action='store_true', default=False, help='dynamic augmentation mode')
+    parser.add_argument('--totalaug', action='store_true', default=False, help='total augmentation mode')
+    parser.add_argument('--max_shots', type=int, default=4, help='max shots for dynamic augmentation')
 
     parser.add_argument('--t2g', action='store_true', default=False, help='translation from spoken to gloss')
     parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
