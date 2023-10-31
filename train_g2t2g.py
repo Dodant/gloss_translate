@@ -155,7 +155,7 @@ class KoGPT2Chat(LightningModule):
     def test_epoch_end(self, test_step_outputs):
         avg_loss = torch.stack([x["test_loss"] for x in test_step_outputs]).mean()
         self.log("avg_test_loss", avg_loss)
-        with open('ALL_RESULT.txt', 'a') as f:
+        with open('etc/ALL_RESULT.txt', 'a') as f:
             if args.bk:
                 f.write(args.model_params + '  =bk=  ' + str(avg_loss.item()) + '\n')
             elif args.k3:

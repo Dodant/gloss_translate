@@ -11,10 +11,12 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.core.lightning import LightningModule
 from torch.utils.data import DataLoader, Dataset
 from transformers.optimization import AdamW, get_cosine_schedule_with_warmup
-from transformers import GPT2LMHeadModel as GPT2
-from transformers import GPT2TokenizerFast as GPT2T
+# from transformers import GPT2LMHeadModel as GPT2
+# from transformers import GPT2TokenizerFast as GPT2T
 from nltk.translate.bleu_score import sentence_bleu
 import mecab_ko as Mecab
+from transformers import AutoModel as GPT2
+from transformers import BertTokenizerFast as GPT2T
 
 U_TKN, S_TKN = '<usr>', '<sys>'
 BOS, EOS = '</s>', '</s>'
@@ -358,7 +360,7 @@ def configure_parser():
     parser.add_argument('--max_shots', type=int, default=4, help='max shots for dynamic augmentation')
 
     parser.add_argument('--t2g', action='store_true', default=False, help='translation from spoken to gloss')
-    parser.add_argument('--model', type=str, default='skt/kogpt2-base-v2', help='model name')
+    parser.add_argument('--model', type=str, default="klue/bert-base", help='model name')
     parser.add_argument('--model_params', type=str, default='model_chp/last.ckpt', help='model binary')
 
     parser.add_argument('--train', action='store_true', default=False, help='training mode')

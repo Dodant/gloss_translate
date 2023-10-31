@@ -1,4 +1,4 @@
-﻿dataset,video_num,question_w_q_morph,question,Gloss level Korean Sign Language (GKSL) sentence,Word level Korean Language (WKL) sentence
+﻿dataset,video_num,question_w_q_morph,question,gloss,spoken
 KETI-Emergency,,,FALSE,집 불,집에 불이 났어요.
 KETI-Emergency,,,FALSE,집 도둑 넘어오다,집에 도둑이 들어왔어요.
 KETI-Emergency,,,FALSE,누가 교통사고,어떤 사람이 교통사고를 당했어요.
