@@ -28,6 +28,7 @@ class TextStyleTransferDataset(Dataset):
 
     def __getitem__(self, index):
         row = self.df.iloc[index, :]
+
         text2 = row['gloss']
         text1 = row['spoken']
         # target_style = row.index[1]
@@ -44,28 +45,28 @@ class TextStyleTransferDataset(Dataset):
         return model_inputs
 
 
-def generate_text(pipe, text, num_return_sequences=5, max_length=60):
-    # target_style_name = style_map[target_style]
-    text = f"글로스 말투로 변환: {text}"
+def generate_text(pipe, text, direction, num_return_sequences=5, max_length=60):
+    if direction == 'g2t': text = f"구어체 말투로 변환: {text}"
+    else: text = f"글로스 말투로 변환: {text}"
     out = pipe(text, num_return_sequences=num_return_sequences, max_length=max_length)
     return [x['generated_text'] for x in out]
 
 
-def func1(model_pth, train_dataset, test_dataset):
-    gksl3k = 'GKSL/GKSL3k.csv'
-    gksl13k = 'GKSL/GKSL13k.csv'
-    df1 = pd.read_csv(gksl3k)
-    df2 = pd.read_csv(gksl13k)
-    gloss_combined = pd.concat([df1['gloss'], df2['gloss']], ignore_index=True)
-    spoken_combined = pd.concat([df1['spoken'], df2['spoken']], ignore_index=True)
-
-    df = pd.DataFrame({
-        'gloss': gloss_combined,
-        'spoken': spoken_combined
-    })
-
+def train_bart(model_pth, train_dataset):
+    # gksl3k = 'GKSL/GKSL3k.csv'
+    # gksl13k = 'GKSL/GKSL13k.csv'
+    # df1 = pd.read_csv(gksl3k)
+    # df2 = pd.read_csv(gksl13k)
+    # gloss_combined = pd.concat([df1['gloss'], df2['gloss']], ignore_index=True)
+    # spoken_combined = pd.concat([df1['spoken'], df2['spoken']], ignore_index=True)
+    #
+    # df = pd.DataFrame({
+    #     'gloss': gloss_combined,
+    #     'spoken': spoken_combined
+    # })
+    df = pd.read_csv(train_dataset)
     dataset = TextStyleTransferDataset(df, tokenizer)
-    df_train, df_test = train_test_split(dataset, test_size=0.01, random_state=42)
+    df_train, df_test = train_test_split(dataset, test_size=0.001, random_state=42)
     data_collator = DataCollatorForSeq2Seq(model=model, tokenizer=tokenizer)
 
     training_args = Seq2SeqTrainingArguments(
@@ -94,31 +95,37 @@ def func1(model_pth, train_dataset, test_dataset):
     trainer.train()
     trainer.save_model(model_pth)
 
-    nlg = pipeline('text2text-generation', model=model_pth, tokenizer=tokenizer)
 
-    # mecab = Mecab.Tagger('-Owakati')
+def inference(model_pth, test_dataset, direction):
+
+    nlg = pipeline('text2text-generation', model=model_pth, tokenizer=tokenizer)
+    mecab = Mecab.Tagger('-Owakati')
 
     df = pd.read_csv(test_dataset)
     SCORE1, SCORE2, SCORE3, SCORE4, SCORET = [], [], [], [], []
 
     for i in range(len(df)):
-        gt_text = df.iloc[i]['gloss']
-        input_text = df.iloc[i]['spoken']
-        output_text = generate_text(nlg, input_text, num_return_sequences=1, max_length=1000)[0]
-        # gtext = tokenizer(gt_text, max_length=64, truncation=True)['input_ids']
-        # outputtext = tokenizer(output_text, max_length=64, truncation=True)['input_ids']
-        # gtext = mecab.parse(gt_text).split()
-        # outputtext = mecab.parse(output_text).split()
-        gtext = gt_text.split()
-        outputtext = output_text.split()
+        if direction == 'g2t':
+            input_text = df.iloc[i]['gloss']
+            gt_text = df.iloc[i]['spoken']
+            output_text = generate_text(nlg, input_text, direction, num_return_sequences=1, max_length=1000)[0]
+            # gtext = tokenizer(gt_text, max_length=64, truncation=True)['input_ids']
+            # outputtext = tokenizer(output_text, max_length=64, truncation=True)['input_ids']
+            gtext = mecab.parse(gt_text).split()
+            outputtext = mecab.parse(output_text).split()
+        else:
+            input_text = df.iloc[i]['spoken']
+            gt_text = df.iloc[i]['gloss']
+            output_text = generate_text(nlg, input_text, direction, num_return_sequences=1, max_length=1000)[0]
+            gtext = gt_text.split()
+            outputtext = output_text.split()
         score1 = sentence_bleu([gtext], outputtext, weights=(1, 0, 0, 0))
         score2 = sentence_bleu([gtext], outputtext, weights=(0, 1, 0, 0))
         score3 = sentence_bleu([gtext], outputtext, weights=(0, 0, 1, 0))
         score4 = sentence_bleu([gtext], outputtext, weights=(0, 0, 0, 1))
         scoret = sentence_bleu([gtext], outputtext)
-        print(f'{i}/{len(df)} {input_text} -> {output_text}')
-        print(gt_text)
-        print(f"BLEU score: {score1:.3f} {score2:.3f} {score3:.3f} {score4:.3f} {scoret:.3f}")
+        # print(f'{i}/{len(df)} {input_text} -> {output_text} // {gt_text}')
+        # print(f"BLEU score: {score1:.3f} {score2:.3f} {score3:.3f} {score4:.3f} {scoret:.3f}")
         SCORE1.append(score1)
         SCORE2.append(score2)
         SCORE3.append(score3)
@@ -128,6 +135,11 @@ def func1(model_pth, train_dataset, test_dataset):
     print(f"{model_pth}  BLEU score: {BLEU1:.3f} {BLEU2:.3f} {BLEU3:.3f} {BLEU4:.3f} {BLEUT:.3f}")
     with open('etc/bleu_score.txt', 'a') as f:
         f.write(f"{model_pth}  BLEU score: {BLEU1:.3f} {BLEU2:.3f} {BLEU3:.3f} {BLEU4:.3f} {BLEUT:.3f}\n")
+
+
+def all_in_one(model_pth, train_dataset, test_dataset, direction):
+    train_bart(model_pth, train_dataset)
+    inference(model_pth, test_dataset, direction)
 
 
 if __name__ == "__main__":
@@ -142,6 +154,12 @@ if __name__ == "__main__":
     # glsk_13k_sp = 'GKSL/GKSL13k_SP.csv'
     # glsk_13k_sr = 'GKSL/GKSL13k_SR.csv'
     test_g = 'MY_DATA/gloss_from_book.csv'
-    func1('model/13k3ktg', 'd', test_g)
+    # func1('model/3kselftg', 'GKSL/GKSL3k_split_train.csv', 'GKSL/GKSL3k_split_test.csv')
+    # func1('model/13kselftg', 'GKSL/GKSL13k_split_train.csv', 'GKSL/GKSL13k_split_test.csv')
+    # func1('model/mykselftg', 'MY_DATA/split_train.csv', 'MY_DATA/split_test.csv')
+    # func1('model/13k3kselftg', 'GKSL/GKSL_split_train.csv', 'GKSL/GKSL_split_test.csv')
+    # func1('model/13k3kselftg', 'GKSL/GKSL_split_train.csv', 'GKSL/GKSL_split_test.csv')
     # func1('model/13ksp', glsk_13k_sp, test_g)
     # func1('model/13ksr', glsk_13k_sr, test_g)
+    all_in_one('model/niasltg', 'NIASL/NIASL_VAL_TACT.csv', 'NIASL/NIASL_VAL_UNTACT.csv', 't2g')
+    inference('model/niasltg', test_g, 't2g')
