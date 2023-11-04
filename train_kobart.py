@@ -29,12 +29,16 @@ class TextStyleTransferDataset(Dataset):
     def __getitem__(self, index):
         row = self.df.iloc[index, :]
 
-        text2 = row['gloss']
-        text1 = row['spoken']
-        # target_style = row.index[1]
-        # target_style_name = style_map[target_style]
+        # 구어체
+        text1 = row['gloss']
+        text2 = row['spoken']
+        encoder_text = f"반말로 변환: {text1}"
 
-        encoder_text = f"글로스 말투로 변환: {text1}"
+        # 글로스
+        # text1 = row['spoken']
+        # text2 = row['gloss']
+        # encoder_text = f"글로스 말투로 변환: {text1}"
+
         decoder_text = f"{text2}{self.tokenizer.eos_token}"
         model_inputs = self.tokenizer(encoder_text, max_length=64, truncation=True)
         with self.tokenizer.as_target_tokenizer():
@@ -45,8 +49,8 @@ class TextStyleTransferDataset(Dataset):
         return model_inputs
 
 
-def generate_text(pipe, text, direction, num_return_sequences=5, max_length=60):
-    if direction == 'g2t': text = f"구어체 말투로 변환: {text}"
+def generate_text(pipe, text, direction, num_return_sequences=5, max_length=100):
+    if direction == 'g2t': text = f"반말로 변환: {text}"
     else: text = f"글로스 말투로 변환: {text}"
     out = pipe(text, num_return_sequences=num_return_sequences, max_length=max_length)
     return [x['generated_text'] for x in out]
@@ -124,8 +128,8 @@ def inference(model_pth, test_dataset, direction):
         score3 = sentence_bleu([gtext], outputtext, weights=(0, 0, 1, 0))
         score4 = sentence_bleu([gtext], outputtext, weights=(0, 0, 0, 1))
         scoret = sentence_bleu([gtext], outputtext)
-        # print(f'{i}/{len(df)} {input_text} -> {output_text} // {gt_text}')
-        # print(f"BLEU score: {score1:.3f} {score2:.3f} {score3:.3f} {score4:.3f} {scoret:.3f}")
+        print(f'{i}/{len(df)} {input_text} -> {output_text} // {gt_text}')
+        print(f"BLEU score: {score1:.3f} {score2:.3f} {score3:.3f} {score4:.3f} {scoret:.3f}")
         SCORE1.append(score1)
         SCORE2.append(score2)
         SCORE3.append(score3)
@@ -140,6 +144,18 @@ def inference(model_pth, test_dataset, direction):
 def all_in_one(model_pth, train_dataset, test_dataset, direction):
     train_bart(model_pth, train_dataset)
     inference(model_pth, test_dataset, direction)
+
+
+def compare(model_pth, test_dataset, direction):
+
+    nlg = pipeline('text2text-generation', model=model_pth, tokenizer=tokenizer)
+    df = pd.read_csv(test_dataset)
+
+    for i in range(len(df)):
+        input_text = df.iloc[i]['gloss']
+        output_text = generate_text(nlg, input_text, direction, num_return_sequences=1, max_length=1000)[0]
+
+        print(f'{i}/{len(df)} {input_text} -> {output_text}')
 
 
 if __name__ == "__main__":
@@ -161,5 +177,36 @@ if __name__ == "__main__":
     # func1('model/13k3kselftg', 'GKSL/GKSL_split_train.csv', 'GKSL/GKSL_split_test.csv')
     # func1('model/13ksp', glsk_13k_sp, test_g)
     # func1('model/13ksr', glsk_13k_sr, test_g)
-    all_in_one('model/niasltg', 'NIASL/NIASL_VAL_TACT.csv', 'NIASL/NIASL_VAL_UNTACT.csv', 't2g')
-    inference('model/niasltg', test_g, 't2g')
+    # all_in_one('model/niasltg', 'NIASL/NIASL_VAL_TACT.csv', 'NIASL/NIASL_VAL_UNTACT.csv', 't2g')
+    # inference('model/niasl', test_g, 'g2t')
+    # inference('model/niasltg', test_g, 't2g')
+    # train_bart('model/formal1', 'MY_DATA/mydata_formal.csv')
+    # train_bart('model/informal1', 'MY_DATA/mydata_informal.csv')
+    # compare('model/informal1', test_g, 'g2t')
+
+    df = pd.read_csv(test_g)
+    SCORE1, SCORE2, SCORE3, SCORE4, SCORET = [], [], [], [], []
+
+    for i in range(len(df)):
+        input_text = df.iloc[i]['spoken']
+        output_text = df.iloc[i]['gloss']
+
+        mecab = Mecab.Tagger('-Owakati')
+
+        gtext = input_text.split()
+        outputtext = output_text.split()
+
+        score1 = sentence_bleu([gtext], outputtext, weights=(1, 0, 0, 0))
+        score2 = sentence_bleu([gtext], outputtext, weights=(0, 1, 0, 0))
+        score3 = sentence_bleu([gtext], outputtext, weights=(0, 0, 1, 0))
+        score4 = sentence_bleu([gtext], outputtext, weights=(0, 0, 0, 1))
+        scoret = sentence_bleu([gtext], outputtext)
+        print(f"BLEU score: {score1:.3f} {score2:.3f} {score3:.3f} {score4:.3f} {scoret:.3f}")
+        SCORE1.append(score1)
+        SCORE2.append(score2)
+        SCORE3.append(score3)
+        SCORE4.append(score4)
+        SCORET.append(scoret)
+    BLEU1, BLEU2, BLEU3, BLEU4, BLEUT \
+        = np.mean(SCORE1), np.mean(SCORE2), np.mean(SCORE3), np.mean(SCORE4), np.mean(SCORET)
+    print(f"BLEU score: {BLEU1:.3f} {BLEU2:.3f} {BLEU3:.3f} {BLEU4:.3f} {BLEUT:.3f}")
