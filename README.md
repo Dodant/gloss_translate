@@ -32,7 +32,7 @@ This study explores the enhancement of Korean Sign Language (KSL) translation th
 ### Gloss2Text Task Evaluation by GPT-4
 Considering the possibility that evaluations may not accurately capture the characteristics of the Korean language, we employed GPT-4 for assessment.
 - Evaluation criteria: grammar, logic, and semantic similarity.
-- Scoring scale established: 1 to 5 points.
+- Scoring scale: 1 ~ 5 points.
 
 | Trained on  | Text                                       | Grammar | Logic  |         Semantic Similarity          |
 |:------------|:-------------------------------------------|:-------:|:------:|:------------------------------------:|
