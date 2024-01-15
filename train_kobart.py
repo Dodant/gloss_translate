@@ -215,80 +215,12 @@ if __name__ == "__main__":
     # mydata = 'MY_DATA/shots/gloss2text/0-shot.csv'
     # gksl13k = 'GKSL/GKSL13k.csv'
     # test_g = 'MY_DATA/gloss_from_book.csv'
-    # func1('model/k3tg', gksl3k, test_g)
-    # func1('model/k13tg', gksl13k, test_g)
-    # func1('model/mytg', mydata, test_g)
-    # glsk_13k_br = 'GKSL/GKSL13k_BR.csv'
-    # glsk_13k_sp = 'GKSL/GKSL13k_SP.csv'
-    # glsk_13k_sr = 'GKSL/GKSL13k_SR.csv'
-    test_g = 'MY_DATA/gloss_from_book.csv'
-    # rouge_score('model/k3', test_g, 'g2t')
-    # rouge_score('model/k13', test_g, 'g2t')
-    # rouge_score('model/my', test_g, 'g2t')
-    # train_bart('model/k3', test_g)
-    # inference('base', test_g, 't2g')
-    # rouge_score('model/niasl', test_g, 'g2t')
 
-    ### self
-    # save_translated('model/niasl', test_g)
-    # save_translated('model/3kself', test_g)
-    # save_translated('model/13kself', test_g)
-    # save_translated('model/13k3kself', test_g)
-    # save_translated('model/mykself', test_g)
+    # rouge_score
+    # save_translated
+    # func1
+    # inference
+    # train_bart
+    # compare
+    # all_in_one
 
-    ### transfer
-    save_translated('model/niasl', test_g, 'g2t')
-    save_translated('model/k3', test_g, 'g2t')
-    save_translated('model/k13', test_g, 'g2t')
-    save_translated('model/13k3k', test_g, 'g2t')
-    save_translated('model/my', test_g, 'g2t')
-
-    save_translated('model/niasltg', test_g, 't2g')
-    save_translated('model/k3tg', test_g, 't2g')
-    save_translated('model/k13tg', test_g, 't2g')
-    save_translated('model/13k3ktg', test_g, 't2g')
-    save_translated('model/mytg', test_g, 't2g')
-
-    # rouge_score('model/3kself', 'GKSL/GKSL3k_split_test.csv', 'g2t')
-    # rouge_score('model/13kself', 'GKSL/GKSL13k_split_test.csv', 'g2t')
-    # rouge_score('model/mykself', 'MY_DATA/split_test.csv', 'g2t')
-    # rouge_score('model/13k3kself', 'GKSL/GKSL_split_test.csv', 'g2t')
-    # rouge_score('model/niasl', 'NIASL/NIASL_VAL_UNTACT.csv', 'g2t')
-
-    # rouge_score('model/k3tg', test_g, 't2g')
-    # rouge_score('model/k13tg', test_g, 't2g')
-    # rouge_score('model/mytg', test_g, 't2g')
-    # rouge_score('model/niasltg', test_g, 't2g')
-    #
-    # rouge_score('model/3kselftg', 'GKSL/GKSL3k_split_test.csv', 't2g')
-    # rouge_score('model/13kselftg', 'GKSL/GKSL13k_split_test.csv', 't2g')
-    # rouge_score('model/mykselftg', 'MY_DATA/split_test.csv', 't2g')
-    # rouge_score('model/13k3kselftg', 'GKSL/GKSL_split_test.csv', 't2g')
-
-    # func1('model/3kself', 'GKSL/GKSL3k_split_train.csv', 'GKSL/GKSL3k_split_test.csv')
-    # func1('model/13kself', 'GKSL/GKSL13k_split_train.csv', 'GKSL/GKSL13k_split_test.csv')
-    # func1('model/13k3kself', 'GKSL/GKSL_split_train.csv', 'GKSL/GKSL_split_test.csv')
-    # func1('model/mykself', 'MY_DATA/split_train.csv', 'MY_DATA/split_test.csv')
-
-    # func1('model/13ksp', glsk_13k_sp, test_g)
-    # func1('model/13ksr', glsk_13k_sr, test_g)
-    # all_in_one('model/niasltg', 'NIASL/NIASL_VAL_TACT.csv', 'NIASL/NIASL_VAL_UNTACT.csv', 't2g')
-    # inference('model/niasl', test_g, 'g2t')
-    # inference('model/niasltg', test_g, 't2g')
-    # train_bart('model/formal1', 'MY_DATA/mydata_formal.csv')
-    # train_bart('model/informal1', 'MY_DATA/mydata_informal.csv')
-    # compare('model/informal1', test_g, 'g2t')
-
-
-    # from rouge import Rouge
-    #
-    # rouge = Rouge()
-    #
-    # df = pd.read_csv(test_g)
-    # rouges = []
-    # for i in range(len(df)):
-    #     input_text = df.iloc[i]['gloss']
-    #     gt_text = df.iloc[i]['spoken']
-    #     scores = rouge.get_scores(gt_text, input_text)
-    #     rouges.append(scores[0]['rouge-l']['f'])
-    # print(f'ROUGE-L score: {np.mean(rouges):.3f}')
